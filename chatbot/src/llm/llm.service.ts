@@ -4,13 +4,17 @@ import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import * as fs from 'fs';
 import * as path from 'path';
+import { WarudoService } from './warudo.service';
 
 @Injectable()
 export class LlmService implements OnModuleInit {
   private readonly grokClient: OpenAI;
   private conversationHistory: ChatCompletionMessageParam[] = [];
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private warudoService: WarudoService,
+  ) {
     const grokApiKey = this.configService.get<string>('GROK_API_KEY');
 
     if (!grokApiKey) {
@@ -39,6 +43,8 @@ export class LlmService implements OnModuleInit {
   }
 
   async chat(userMessage: string) {
+    console.log('User message:\n', userMessage); // 사용자 입력 로그
+
     // 사용자 메시지를 대화 기록에 추가
     this.conversationHistory.push({
       role: 'user',
@@ -47,6 +53,19 @@ export class LlmService implements OnModuleInit {
 
     try {
       let responseLLM = await this.getLLMResponse(this.conversationHistory);
+
+      console.log('LLM response:\n', responseLLM); // LLM 응답 로그
+
+      // Warudo에 동작 변화 메시지 전송
+      const poseChangeMatch = responseLLM.match(/\[Pose\]:\s*(.*)/);
+      console.log('Pose change match:\n', poseChangeMatch);
+
+      if (poseChangeMatch) {
+        const poseAction = poseChangeMatch[1];
+        const messageWarudo = JSON.stringify({ action: poseAction });
+        console.log('Sending message to Warudo:\n', messageWarudo);
+        this.warudoService.sendMessageToWarudo(messageWarudo);
+      }
 
       // TTS, POSE 태그 제거
       responseLLM = responseLLM.replace(/\[TTS\]:/g, '').trim();
